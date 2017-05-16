@@ -19,12 +19,14 @@
 		public $token_secret;
 		public $consumer_key;
 		public $consumer_secret;
+		public $has_file_caching;
 		
-		public function __construct($token,$token_secret,$consumer_key,$consumer_secret){
+		public function __construct($token, $token_secret, $consumer_key, $consumer_secret, $has_file_caching = false){
 			$this->token = $token;
 			$this->token_secret = $token_secret;
 			$this->consumer_key = $consumer_key;
 			$this->consumer_secret = $consumer_secret;
+			$this->has_file_caching = $has_file_caching;
 		}
 				
 		public function render($user,$limit = 3){
@@ -33,21 +35,22 @@
 			
 			if($user && $limit):			
 				// check the cache file
+				$nocache = true;
+			
+				if($this->has_file_caching):
+					$cache_folder = 'cache';
+					if(!is_dir($cache_folder))
+						mkdir($cache_folder,664);
+
+					$cache_file = $cache_folder.'/'.$user.'_twitter_cache';
+
+					/* Start with the cache */
 		
-				$cache_folder = 'cache';
-				if(!is_dir($cache_folder))
-					mkdir($cache_folder,664);
-				
-				$cache_file = $cache_folder.'/'.$user.'_twitter_cache';
-		
-				/* Start with the cache */
-		
-				if(file_exists($cache_file)):
-					$mtime = $this->time_diff(filemtime($cache_file), time());
-					$nocache = ($mtime['minutes'] > $this->cache_minutes);
-				else:
-					$nocache = true;
-				endif;		
+					if(file_exists($cache_file)):
+						$mtime = $this->time_diff(filemtime($cache_file), time());
+						$nocache = ($mtime['minutes'] > $this->cache_minutes);
+					endif;	
+				endif;
 				
 				if($nocache):															
 					$host = 'api.twitter.com';
@@ -114,14 +117,20 @@
 					curl_setopt_array($feed, $options);
 					$result = curl_exec($feed);
 					curl_close($feed);
-															
-					$cache_static = fopen($cache_file, 'wb');
-					fwrite($cache_static, serialize($result));
-					fclose($cache_static);
+					$serialized = serialize($result);
+					if($this->has_file_caching):										
+						$cache_static = fopen($cache_file, 'wb');
+						fwrite($cache_static, $serialized);
+						fclose($cache_static);
+					endif;
 				endif;
 				
 				/* End of caching */
-				$json = @unserialize(file_get_contents($cache_file)); // Now parse it as you'd like
+				if($this->has_file_caching):
+					$json = @unserialize(file_get_contents($cache_file)); // Now parse it as you'd like
+				else:
+					$json = @unserialize($serialized);
+				endif;
 				$tweets = json_decode($json);
 				$i = 0;
 				foreach($tweets as $tweet):
@@ -255,19 +264,18 @@
 		  return $diff;
 		}
 		
-		private function twitter_links($status,$targetBlank=false,$linkMaxLen=250){
+		private function twitter_links($tweet,$targetBlank=false){
 			$target=$targetBlank ? " target=\"_blank\" " : "";
-			// convert link to url
-			$status = preg_replace("/((http:\/\/|https:\/\/)[^ )
-			#
-			]+)/e", "'<a href=\"$1\" title=\"$1\" $target >'. ((strlen('$1')>=$linkMaxLen ? substr('$1',0,$linkMaxLen).'...':'$1')).'</a>'", $status);
-			// convert @ to follow
-			$status = preg_replace("/(@([_a-z0-9\-]+))/i","<a href=\"http://twitter.com/$2\" title=\"Follow $2\" $target >$1</a>",$status);
-	
-			// convert # to search
-			$status = preg_replace("/(?<!&)(#([_a-z0-9\-]+))/i","<a href=\"https://twitter.com/search?src=hash&q=%23$2\" title=\"Search $1\" $target >$1</a>",$status);
-	
-			return $status;
+			//Convert urls to <a> links
+			$tweet = preg_replace("/([\w]+\:\/\/[\w-?&;#~=\.\/\@]+[\w\/])/", "<a ".$target." href=\"$1\">$1</a>", $tweet);
+
+			//Convert hashtags to twitter searches in <a> links
+			$tweet = preg_replace("/#([A-Za-z0-9\/\.]*)/", "<a ".$target." href=\"http://twitter.com/search?q=$1\">#$1</a>", $tweet);
+
+			//Convert attags to twitter profiles in &lt;a&gt; links
+			$tweet = preg_replace("/@([A-Za-z0-9\/\.]*)/", "<a ".$target."  href=\"http://www.twitter.com/$1\">@$1</a>", $tweet);
+			
+			return $tweet;
 		}
 		
 	}
