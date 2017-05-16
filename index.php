@@ -7,7 +7,8 @@
 	$token_secret = "PASTEHERE";
 	$consumer_key = "PASTEHERE";
 	$consumer_secret = "PASTEHERE";
-	$twitter = new TwitterGetter($token,$token_secret,$consumer_key,$consumer_secret);
+	$use_file_caching = false;
+	$twitter = new TwitterGetter($token, $token_secret, $consumer_key, $consumer_secret, $use_file_caching);
 ?>
 <!DOCTYPE html>
 <html lang="en">
